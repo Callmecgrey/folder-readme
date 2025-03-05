@@ -163,6 +163,10 @@ function App() {
     ignoreFolders.add("node_modules");
     ignoreFolders.add(".git");
     ignoreFolders.add(".DS_Store");
+    ignoreFolders.add(".expo");
+    ignoreFolders.add("android");
+    ignoreFolders.add("ios");
+    ignoreFolders.add("build");
 
     // Build a list of project file paths
     const filePaths: string[] = [];
@@ -193,6 +197,10 @@ function App() {
       removeKeyRecursively(tree, "node_modules");
       removeKeyRecursively(tree, ".git");
       removeKeyRecursively(tree, ".DS_Store");
+      removeKeyRecursively(tree, ".expo");
+      removeKeyRecursively(tree, "android");
+      removeKeyRecursively(tree, "ios");
+      removeKeyRecursively(tree, "build");
 
       let structureLines: string[] = [];
       structureLines.push(rootFolder);
