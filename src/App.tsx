@@ -1,5 +1,27 @@
+'use client';
+
 import React, { useState, useRef } from 'react';
-import { FolderOpen, X, Eye, RefreshCw, FileText, AlertTriangle, ChevronDown, ChevronUp, FolderX } from 'lucide-react';
+import { 
+  FolderOpen, 
+  X, 
+  Eye, 
+  RefreshCw, 
+  FileText, 
+  ChevronDown, 
+  ChevronUp, 
+  FolderX,
+  Plus,
+  Trash2
+} from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 
 declare module 'react' {
   interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
@@ -10,19 +32,17 @@ declare module 'react' {
 
 function App() {
   const [projectFiles, setProjectFiles] = useState<FileList | null>(null);
-  const [ignoreFiles, setIgnoreFiles] = useState<FileList | null>(null);
+  const [ignoreFoldersList, setIgnoreFoldersList] = useState<{ id: string; files: FileList | null }[]>([]);
   const [previewContent, setPreviewContent] = useState<string>("[Preview will appear here]");
   const [showGenerateButton, setShowGenerateButton] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showProgress, setShowProgress] = useState(false);
-  const [alert, setAlert] = useState({ show: false, message: "" });
+  const [alertDialog, setAlertDialog] = useState({ open: false, message: "" });
   const [projectExpanded, setProjectExpanded] = useState(false);
-  const [ignoreExpanded, setIgnoreExpanded] = useState(false);
   const [rootFolderName, setRootFolderName] = useState("");
   const [structure, setStructure] = useState("");
 
   const projectInputRef = useRef<HTMLInputElement>(null);
-  const ignoreInputRef = useRef<HTMLInputElement>(null);
 
   // Helper: Build a tree object from an array of file paths
   const buildTree = (filePaths: string[]): Record<string, Record<string, unknown>> => {
@@ -68,12 +88,9 @@ function App() {
     return lines;
   };
 
-  // Custom alert function.
-  const showCustomAlert = (message: string) => {
-    setAlert({ show: true, message });
-    setTimeout(() => {
-      setAlert({ show: false, message: "" });
-    }, 3000);
+  // Show alert dialog
+  const showAlert = (message: string) => {
+    setAlertDialog({ open: true, message });
   };
 
   // Handle project files selection
@@ -85,21 +102,30 @@ function App() {
     }
   };
 
-  // Handle ignore files selection
-  const handleIgnoreFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setIgnoreFiles(e.target.files);
-    } else {
-      setIgnoreFiles(null);
-    }
+  // Handle adding a new ignore folder input
+  const handleAddIgnoreFolder = () => {
+    setIgnoreFoldersList([...ignoreFoldersList, { id: Date.now().toString(), files: null }]);
+  };
+
+  // Handle ignore files selection for a specific input
+  const handleIgnoreFilesChange = (id: string, files: FileList | null) => {
+    setIgnoreFoldersList(prevList => 
+      prevList.map(item => 
+        item.id === id ? { ...item, files } : item
+      )
+    );
+  };
+
+  // Handle removing an ignore folder input
+  const handleRemoveIgnoreFolder = (id: string) => {
+    setIgnoreFoldersList(prevList => prevList.filter(item => item.id !== id));
   };
 
   // Handle start over
   const handleStartOver = () => {
     if (projectInputRef.current) projectInputRef.current.value = "";
-    if (ignoreInputRef.current) ignoreInputRef.current.value = "";
     setProjectFiles(null);
-    setIgnoreFiles(null);
+    setIgnoreFoldersList([]);
     setPreviewContent("[Preview will appear here]");
     setShowGenerateButton(false);
     setShowProgress(false);
@@ -111,7 +137,7 @@ function App() {
   // Handle preview generation
   const handlePreview = () => {
     if (!projectFiles || projectFiles.length === 0) {
-      showCustomAlert("Please select a project folder.");
+      showAlert("Please select a project folder.");
       return;
     }
 
@@ -120,16 +146,18 @@ function App() {
     const rootFolder = firstFilePath.split('/')[0];
     setRootFolderName(rootFolder);
 
-    // Build an array of ignore folder names from the ignore input
+    // Build a set of ignore folder names from all ignore inputs
     const ignoreFolders = new Set<string>();
-    if (ignoreFiles) {
-      for (let i = 0; i < ignoreFiles.length; i++) {
-        const parts = ignoreFiles[i].webkitRelativePath.split('/');
-        if (parts.length > 0) {
-          ignoreFolders.add(parts[0]);
+    ignoreFoldersList.forEach(({ files }) => {
+      if (files) {
+        for (let i = 0; i < files.length; i++) {
+          const parts = files[i].webkitRelativePath.split('/');
+          if (parts.length > 0) {
+            ignoreFolders.add(parts[0]);
+          }
         }
       }
-    }
+    });
     
     // Automatically add unwanted folders
     ignoreFolders.add("node_modules");
@@ -183,11 +211,11 @@ function App() {
     }, 50);
   };
 
-  // Handle downloading the generated README file directly in the frontend
+  // Handle downloading the generated README file
   const handleGenerateReadme = (e: React.FormEvent) => {
     e.preventDefault();
     if (!structure || !rootFolderName) {
-      showCustomAlert("Missing structure or folder name.");
+      showAlert("Missing structure or folder name.");
       return;
     }
     const readmeContent = `# Project File and Folder Structure\n\nBelow is the structure of the project:\n\n\`\`\`\n${structure}\n\`\`\``;
@@ -216,60 +244,71 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-6 px-4 shadow-md">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold flex items-center">
-            <FileText className="mr-2" />
-            README Generator
-          </h1>
-          <p className="mt-2 opacity-90">Generate comprehensive README files from your project structure</p>
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-indigo-700 text-white py-4 shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <FileText className="h-8 w-8 mr-3" />
+              <h1 className="text-2xl font-bold">README Generator</h1>
+            </div>
+            <button 
+              onClick={handleStartOver}
+              className="flex items-center px-4 py-2 bg-blue-500 bg-opacity-20 hover:bg-opacity-30 rounded-md transition"
+            >
+              <RefreshCw size={16} className="mr-2" />
+              Reset
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* Custom Alert */}
-      {alert.show && (
-        <div className="fixed top-4 right-4 bg-red-500 text-white px-4 py-3 rounded-lg shadow-lg flex items-center z-50 animate-fade-in-down">
-          <AlertTriangle className="mr-2" />
-          <span>{alert.message}</span>
-          <button 
-            onClick={() => setAlert({ show: false, message: "" })}
-            className="ml-3 text-white"
-          >
-            <X size={18} />
-          </button>
-        </div>
-      )}
+      {/* Alert Dialog */}
+      <AlertDialog 
+        open={alertDialog.open} 
+        onOpenChange={(open: boolean) => setAlertDialog({ ...alertDialog, open })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+        <AlertDialogTitle>Alert</AlertDialogTitle>
+        <AlertDialogDescription>{alertDialog.message}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+        <AlertDialogAction>OK</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto py-8 px-4">
-        <div className="flex flex-col md:flex-row gap-6">
+      <main className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-col lg:flex-row gap-6">
           {/* Left Panel */}
-          <div className="w-full md:w-2/5">
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Project Configuration</h2>
+          <div className="w-full lg:w-2/5 space-y-6">
+            {/* Project Folder Selection */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <FolderOpen className="mr-2 h-5 w-5 text-blue-600" />
+                Project Folder
+              </h2>
               
-              {/* Project Folder Selection */}
-              <div className="mb-6">
-                <label className="block text-gray-700 font-medium mb-2">Project Folder</label>
-                <div className="flex items-center">
-                  <input 
-                    type="file" 
-                    id="projectFiles" 
-                    ref={projectInputRef}
-                    onChange={handleProjectFilesChange}
-                    webkitdirectory="true"
-                    directory=""
-                    multiple
-                    required
-                    className="hidden"
-                  />
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                <input 
+                  type="file" 
+                  id="projectFiles" 
+                  ref={projectInputRef}
+                  onChange={handleProjectFilesChange}
+                  webkitdirectory="true"
+                  directory=""
+                  multiple
+                  className="hidden"
+                />
                   <label 
                     htmlFor="projectFiles"
-                    className="flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition cursor-pointer"
+                    className="flex-1 flex items-center justify-center px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition cursor-pointer"
                   >
                     <FolderOpen size={18} className="mr-2" />
-                    Select Folder
+                    Select Project Folder
                   </label>
                   {projectFiles && (
                     <button 
@@ -277,7 +316,7 @@ function App() {
                         if (projectInputRef.current) projectInputRef.current.value = "";
                         setProjectFiles(null);
                       }}
-                      className="ml-2 p-2 text-gray-500 hover:text-red-500 transition"
+                      className="p-2.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                       title="Clear selection"
                     >
                       <X size={18} />
@@ -286,156 +325,157 @@ function App() {
                 </div>
                 
                 {projectFiles && (
-                  <div className="mt-3 bg-gray-50 rounded-md border border-gray-200 p-3">
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
                     <div className="flex justify-between items-center">
                       <div>
-                        <div className="font-medium">{getRootFolderName(projectFiles)}</div>
+                        <div className="font-medium text-gray-900">{getRootFolderName(projectFiles)}</div>
                         <div className="text-sm text-gray-600">{getFileCount(projectFiles)} files</div>
                       </div>
                       <button 
                         onClick={() => setProjectExpanded(!projectExpanded)}
-                        className="text-gray-500 hover:text-gray-700"
+                        className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition"
                       >
                         {projectExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                       </button>
                     </div>
                     
                     {projectExpanded && (
-                      <div className="mt-2 max-h-40 overflow-y-auto text-sm bg-gray-100 p-2 rounded">
+                      <div className="mt-3 max-h-40 overflow-y-auto text-sm bg-white rounded-md border border-gray-200 p-3">
                         <pre className="text-xs text-gray-600">
                           {Array.from(projectFiles).slice(0, 100).map((file, index) => (
-                            <div key={index}>{file.webkitRelativePath}</div>
+                            <div key={index} className="truncate">{file.webkitRelativePath}</div>
                           ))}
-                          {projectFiles.length > 100 && <div>... and {projectFiles.length - 100} more files</div>}
+                          {projectFiles.length > 100 && (
+                            <div className="text-gray-500 mt-2 pt-2 border-t">
+                              ... and {projectFiles.length - 100} more files
+                            </div>
+                          )}
                         </pre>
                       </div>
                     )}
                   </div>
                 )}
               </div>
-              
-              {/* Ignore Folders Selection */}
-              <div className="mb-6">
-                <label className="block text-gray-700 font-medium mb-2">Folders to Ignore (Optional)</label>
-                <div className="flex items-center">
-                  <input 
-                    type="file" 
-                    id="ignoreFiles" 
-                    ref={ignoreInputRef}
-                    onChange={handleIgnoreFilesChange}
-                    webkitdirectory="true"
-                    directory=""
-                    multiple
-                    className="hidden"
-                  />
-                  <label 
-                    htmlFor="ignoreFiles"
-                    className="flex items-center justify-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition cursor-pointer"
-                  >
-                    <FolderX size={18} className="mr-2" />
-                    Select Ignore Folders
-                  </label>
-                  {ignoreFiles && (
-                    <button 
-                      onClick={() => {
-                        if (ignoreInputRef.current) ignoreInputRef.current.value = "";
-                        setIgnoreFiles(null);
-                      }}
-                      className="ml-2 p-2 text-gray-500 hover:text-red-500 transition"
-                      title="Clear selection"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
-                </div>
-                
-                {ignoreFiles && (
-                  <div className="mt-3 bg-gray-50 rounded-md border border-gray-200 p-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">{getRootFolderName(ignoreFiles)}</div>
-                        <div className="text-sm text-gray-600">{getFileCount(ignoreFiles)} files</div>
-                      </div>
-                      <button 
-                        onClick={() => setIgnoreExpanded(!ignoreExpanded)}
-                        className="text-gray-500 hover:text-gray-700"
+            </div>
+
+            {/* Ignore Folders Selection */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-800 flex items-center">
+                  <FolderX className="mr-2 h-5 w-5 text-gray-600" />
+                  Folders to Ignore
+                </h2>
+                <button
+                  onClick={handleAddIgnoreFolder}
+                  className="flex items-center px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition"
+                >
+                  <Plus size={16} className="mr-1" />
+                  Add Folder
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {ignoreFoldersList.map(({ id, files }) => (
+                  <div key={id} className="relative">
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="file" 
+                        id={`ignore-${id}`}
+                        onChange={(e) => handleIgnoreFilesChange(id, e.target.files)}
+                        webkitdirectory="true"
+                        directory=""
+                        multiple
+                        className="hidden"
+                      />
+                      <label 
+                        htmlFor={`ignore-${id}`}
+                        className="flex-1 flex items-center justify-center px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition cursor-pointer"
                       >
-                        {ignoreExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        <FolderX size={18} className="mr-2" />
+                        {files ? getRootFolderName(files) : 'Select Folder'}
+                      </label>
+                      <button 
+                        onClick={() => handleRemoveIgnoreFolder(id)}
+                        className="p-2.5 text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                        title="Remove folder"
+                      >
+                        <Trash2 size={18} />
                       </button>
                     </div>
-                    
-                    {ignoreExpanded && (
-                      <div className="mt-2 max-h-40 overflow-y-auto text-sm bg-gray-100 p-2 rounded">
-                        <pre className="text-xs text-gray-600">
-                          {ignoreFiles && Array.from(ignoreFiles).slice(0, 100).map((file, index) => (
-                            <div key={index}>{file.webkitRelativePath}</div>
-                          ))}
-                          {ignoreFiles && ignoreFiles.length > 100 && <div>... and {ignoreFiles.length - 100} more files</div>}
-                        </pre>
+                    {files && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        {getFileCount(files)} files selected
                       </div>
                     )}
                   </div>
+                ))}
+
+                {ignoreFoldersList.length === 0 && (
+                  <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <FolderX className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No ignore folders selected</p>
+                    <button
+                      onClick={handleAddIgnoreFolder}
+                      className="mt-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    >
+                      Add a folder to ignore
+                    </button>
+                  </div>
                 )}
-                
-                <div className="mt-2 text-sm text-gray-600">
-                  <p>Note: node_modules, .git, and .DS_Store are automatically ignored</p>
+
+                <div className="text-xs text-gray-500 mt-3">
+                  Note: node_modules, .git, and .DS_Store are automatically ignored
                 </div>
               </div>
-              
-              {/* Action Buttons */}
-              <div className="flex space-x-3">
-                <button 
-                  onClick={handlePreview}
-                  className="flex-1 flex items-center justify-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition"
-                  disabled={!projectFiles}
-                >
-                  <Eye size={18} className="mr-2" />
-                  Preview Structure
-                </button>
-                <button 
-                  onClick={handleStartOver}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-100 transition flex items-center"
-                >
-                  <RefreshCw size={18} className="mr-2" />
-                  Reset
-                </button>
-              </div>
-              
-              {/* Progress Bar */}
-              {showProgress && (
-                <div className="mt-6">
-                  <div className="flex justify-between text-sm text-gray-600 mb-1">
-                    <span>Processing Files</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5">
-                    <div 
-                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                      style={{ width: `${progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
             </div>
+
+            {/* Preview Button */}
+            <button 
+              onClick={handlePreview}
+              className="w-full flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!projectFiles}
+            >
+              <Eye size={18} className="mr-2" />
+              Generate Preview
+            </button>
+
+            {/* Progress Bar */}
+            {showProgress && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex justify-between text-sm text-gray-600 mb-2">
+                  <span>Processing Files</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Right Panel */}
-          <div className="w-full md:w-3/5">
-            <div className="bg-white rounded-lg shadow-md p-6 h-full">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Preview of Project Structure</h2>
+          <div className="w-full lg:w-3/5">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 h-full">
+              <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <FileText className="mr-2 h-5 w-5 text-gray-600" />
+                Preview
+              </h2>
               
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 h-[400px] overflow-y-auto font-mono text-sm">
-                <pre className="whitespace-pre-wrap">{previewContent}</pre>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 h-[500px] overflow-y-auto font-mono text-sm">
+                <pre className="whitespace-pre-wrap text-gray-700">{previewContent}</pre>
               </div>
               
               {showGenerateButton && (
-                <div className="mt-6 text-center">
+                <div className="mt-6 flex justify-center">
                   <button 
                     onClick={handleGenerateReadme}
-                    className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition inline-flex items-center"
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition inline-flex items-center shadow-sm"
                   >
                     <FileText size={18} className="mr-2" />
-                    Generate README
+                    Generate README.md
                   </button>
                 </div>
               )}
@@ -443,14 +483,6 @@ function App() {
           </div>
         </div>
       </main>
-      
-      {/* Footer */}
-      <footer className="bg-gray-800 text-gray-300 py-6 mt-12">
-        <div className="max-w-6xl mx-auto px-4 text-center">
-          <p>README Generator Tool &copy; {new Date().getFullYear()}</p>
-          <p className="text-sm mt-2 text-gray-400">A tool to help you document your projects better</p>
-        </div>
-      </footer>
     </div>
   );
 }
