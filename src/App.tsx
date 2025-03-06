@@ -41,6 +41,9 @@ function App() {
   const [projectExpanded, setProjectExpanded] = useState(false);
   const [rootFolderName, setRootFolderName] = useState("");
   const [structure, setStructure] = useState("");
+  // New state for simulated upload progress
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
 
   const projectInputRef = useRef<HTMLInputElement>(null);
 
@@ -93,10 +96,26 @@ function App() {
     setAlertDialog({ open: true, message });
   };
 
-  // Handle project files selection
+  // Handle project files selection with simulated upload progress
   const handleProjectFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setProjectFiles(e.target.files);
+      setIsUploading(true);
+      setUploadProgress(0);
+      // Simulate an upload progress over 1 second
+      const totalTime = 1000; // total simulation time in ms
+      const intervalTime = 100; // update every 100ms
+      let simulatedProgress = 0;
+      const interval = setInterval(() => {
+        simulatedProgress += 10;
+        setUploadProgress(Math.min(simulatedProgress, 100));
+        if (simulatedProgress >= 100) {
+          clearInterval(interval);
+        }
+      }, intervalTime);
+      setTimeout(() => {
+        setProjectFiles(e.target.files);
+        setIsUploading(false);
+      }, totalTime);
     } else {
       setProjectFiles(null);
     }
@@ -167,12 +186,13 @@ function App() {
     ignoreFolders.add("android");
     ignoreFolders.add("ios");
     ignoreFolders.add("build");
+    ignoreFolders.add(".next");
 
     // Build a list of project file paths
     const filePaths: string[] = [];
     const totalFiles = projectFiles.length;
     
-    // Show progress bar
+    // Show progress bar for processing files
     setShowProgress(true);
     setProgress(0);
 
@@ -201,10 +221,14 @@ function App() {
       removeKeyRecursively(tree, "android");
       removeKeyRecursively(tree, "ios");
       removeKeyRecursively(tree, "build");
+      removeKeyRecursively(tree, ".next");
 
       let structureLines: string[] = [];
       structureLines.push(rootFolder);
-      structureLines = structureLines.concat(treeToString(tree, ''));
+      // Use only the children of the root folder with an initial indent of 4 spaces
+      if (tree[rootFolder]) {
+        structureLines = structureLines.concat(treeToString(tree[rootFolder] as Record<string, Record<string, unknown>>, '    '));
+      }
       const structureText = structureLines.join('\n');
       setStructure(structureText);
 
@@ -226,7 +250,20 @@ function App() {
       showAlert("Missing structure or folder name.");
       return;
     }
-    const readmeContent = `# Project File and Folder Structure\n\nBelow is the structure of the project:\n\n\`\`\`\n${structure}\n\`\`\``;
+    const readmeContent = `# Project File and Folder Structure
+
+Below is the structure of the project:
+
+\`\`\`bash
+${structure}
+\`\`\`
+
+## generated with
+
+\`\`\`text
+https://generatereadme.pages.dev/
+\`\`\`
+`;
     const blob = new Blob([readmeContent], { type: "text/markdown;charset=utf-8" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -278,11 +315,11 @@ function App() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-        <AlertDialogTitle>Alert</AlertDialogTitle>
-        <AlertDialogDescription>{alertDialog.message}</AlertDialogDescription>
+            <AlertDialogTitle>Alert</AlertDialogTitle>
+            <AlertDialogDescription>{alertDialog.message}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-        <AlertDialogAction>OK</AlertDialogAction>
+            <AlertDialogAction>OK</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -301,16 +338,16 @@ function App() {
               
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                <input 
-                  type="file" 
-                  id="projectFiles" 
-                  ref={projectInputRef}
-                  onChange={handleProjectFilesChange}
-                  webkitdirectory="true"
-                  directory=""
-                  multiple
-                  className="hidden"
-                />
+                  <input 
+                    type="file" 
+                    id="projectFiles" 
+                    ref={projectInputRef}
+                    onChange={handleProjectFilesChange}
+                    webkitdirectory="true"
+                    directory=""
+                    multiple
+                    className="hidden"
+                  />
                   <label 
                     htmlFor="projectFiles"
                     className="flex-1 flex items-center justify-center px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition cursor-pointer"
@@ -331,6 +368,15 @@ function App() {
                     </button>
                   )}
                 </div>
+                {/* Simulated Upload Progress Bar */}
+                {isUploading && (
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                )}
                 
                 {projectFiles && (
                   <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
@@ -447,7 +493,7 @@ function App() {
               Generate Preview
             </button>
 
-            {/* Progress Bar */}
+            {/* Processing Files Progress Bar */}
             {showProgress && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex justify-between text-sm text-gray-600 mb-2">
